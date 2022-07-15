@@ -31,6 +31,9 @@ class Torgash:
         self.current_price = 0
         ###################################
 
+    def set_base_symbol(self, symbol):
+        self.base_symbol = symbol
+
 
     def set_data(self, ohlcv_df: pd.DataFrame, date_time=0, open=1, high=2, low=3, close=4, volume=5):
         self.data = pd.DataFrame([
