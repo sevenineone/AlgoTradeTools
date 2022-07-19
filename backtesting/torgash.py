@@ -10,8 +10,8 @@ class Torgash:
         self.current_trading_balance = 0
         self.trading_symbol = 'btc'
         self.trading_fee_multiplier = 1 - 0.0002
-        self.min_bid_threshold = 0
-        self.min_ask_threshold = 0
+        self.min_order_threshold = 5  # equal 5usdt for binance futures
+        self.min_order_step = 0.001   # min step for trading_symbol (btc) 0.001btc binance futures
         ###################################
         self.transaction_type_hist = []
         self.transaction_amount_hist = []
@@ -52,7 +52,7 @@ class Torgash:
     def buy(self, amount=-1., ):
         if amount < 0:
             amount = self.current_base_balance
-        if self.current_base_balance >= amount >= self.min_bid_threshold:
+        if self.current_base_balance >= amount >= self.min_order_threshold:
             self.current_base_balance -= amount
             self.current_trading_balance += (amount / self.current_price) * self.trading_fee_multiplier
             ###
@@ -71,7 +71,7 @@ class Torgash:
     def sell(self, amount=-1., ):
         if amount < 0:
             amount = self.current_trading_balance
-        if self.current_trading_balance >= amount >= self.min_ask_threshold:
+        if self.current_trading_balance >= amount >= self.min_order_threshold:
             self.current_trading_balance -= amount
             self.current_base_balance += (amount * self.current_price) * self.trading_fee_multiplier
             ###
@@ -112,12 +112,37 @@ class Torgash:
             self.base_balance_hist.append(self.current_base_balance)
             self.trading_balance_hist.append(self.current_trading_balance)
 
-    def plot(self):
-        fig = go.Figure(data=[go.Candlestick(x=self.data.index.values,
-                                             open=self.data['Open'], high=self.data['High'],
-                                             low=self.data['Low'], close=self.data['Close'])
-                              ])
+    def plot(self, count_candlestick_per_plot=10000):  # Надо подписи на графике поменять
+        """ displays count_candlestick_per_plot candlestick at one time on one chart """
 
-        fig.update_layout(xaxis_rangeslider_visible=False)
+        fig = go.Figure()
+        for i in range(0, len(self.data), count_candlestick_per_plot):
+            data_interval = self.data[i:i + count_candlestick_per_plot]
+            fig.add_trace(
+                go.Candlestick(visible=False,
+                               x=data_interval.index.values,
+                               open=data_interval['Open'], high=data_interval['High'],
+                               low=data_interval['Low'], close=data_interval['Close'])
+            )
+        fig.data[0].visible = True
+
+        #  Create slider
+        steps = []
+        for i in range(len(fig.data)):
+            step = dict(
+                method="update",
+                args=[{"visible": [False] * len(fig.data)},
+                      {"title": "Slider switched to step: " + str(i)}],  # layout attribute
+            )
+            step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+            steps.append(step)
+
+        sliders = [dict(
+            active=0,
+            currentvalue={"prefix": "Date: "},
+            pad={"t": 30},
+            steps=steps
+        )]
+
+        fig.update_layout(xaxis_rangeslider_visible=False, sliders=sliders)
         fig.show()
-        # coming soon...
