@@ -39,10 +39,9 @@ class Torgash:
         except:
             raise ValueError("Datetime column format must be unix or string format.")
         # calculate indicators to dataframe
-        self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
-        self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=100))
-        self.data.columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume', 'sma_fast',
-                             'sma_slow']  # name the columns the way you want
+        # self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
+        # self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=100))
+        self.data.columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']  # name the columns the way you want
         #####################################################
         self.data.set_index('Datetime', inplace=True)
 
