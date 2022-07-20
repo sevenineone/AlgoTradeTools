@@ -112,11 +112,13 @@ class Torgash:
             self.base_balance_hist.append(self.current_base_balance)
             self.trading_balance_hist.append(self.current_trading_balance)
 
-    def plot(self, count_candlestick_per_plot=10000):  # Надо подписи на графике поменять
+    def plot(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):  # Надо подписи на графике поменять
         """ displays count_candlestick_per_plot candlestick at one time on one chart """
+        if to_candle == 0 or to_candle > len(self.data):
+            to_candle = len(self.data)
 
         fig = go.Figure()
-        for i in range(0, len(self.data), count_candlestick_per_plot):
+        for i in range(from_candle, to_candle, count_candlestick_per_plot):
             data_interval = self.data[i:i + count_candlestick_per_plot]
             fig.add_trace(
                 go.Candlestick(visible=False,
@@ -132,7 +134,7 @@ class Torgash:
             step = dict(
                 method="update",
                 args=[{"visible": [False] * len(fig.data)},
-                      {"title": "Slider switched to step: " + str(i)}],  # layout attribute
+                      {"title": "Title: " + str(i)}],  # layout attribute
             )
             step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
             steps.append(step)
