@@ -1,5 +1,6 @@
 import pandas as pd
 import ta
+import ccxt
 import plotly.graph_objects as go
 
 
@@ -48,6 +49,26 @@ class Torgash:
     def set_data_from_csv(self, filename: str, date_time=0, open=1, high=2, low=3, close=4, volume=5):
         ohlcv_df = pd.read_csv(filename)
         self.set_data(ohlcv_df, date_time=date_time, open=open, high=high, low=low, close=close, volume=volume)
+
+    def createOrder(self, symbol, type, side, amount, price = None, params = {}):
+        """
+        :param symbol: (String) required Unified CCXT market symbol
+        :param type: "market" "limit" see #custom-order-params and #other-order-types for non-unified types
+        :param side: "buy" | "sell"
+        :param amount: how much of currency you want to trade usually, but not always, in units of the base currency
+               of the trading pair symbol (the units for some exchanges are dependent on the side of the order:
+               see their API docs for details.)
+        :param price: the price at which the order is to be fullfilled at in units of the quote currency
+               (ignored in market orders)
+        :param params: (Dictionary) Extra parameters specific to the exchange API endpoint (e.g. {"settle": "usdt"})
+        :return: A successful order call returns a order
+
+        ex:
+        mk.create_order(symbol='XRP/BTC', type='stop_loss_limit', side='sell', amount=1,
+                        price=0.6, params={'stopPrice':0.60})
+
+        """
+        pass
 
     def buy(self, amount=-1., ):
         if amount < 0:
