@@ -167,7 +167,7 @@ class Torgash:
         """
         return self.createOrder(symbol=symbol, type="limit", side="sell", amount=amount, price=price, params=params)
 
-    def createMarketOrder (self, symbol, side, amount, params):
+    def createMarketOrder (self, symbol, side, amount, params={}):
         return self.createOrder(symbol=symbol, type="market", side=side, amount=amount, params=params)
 
     def fetchOpenOrders(self, ): # вывод id всех открытых ордеров
