@@ -59,8 +59,9 @@ class Torgash:
         self.min_order_step = 0.001  # min step for trading_symbol (btc) 0.001btc binance futures
         ###################################
         self.transaction_type_hist = []  # надо убрать
-        self.transaction_amount_hist = []  # надо убрать
         self.transaction_datetime = []  # надо убрать
+        self.transaction_price_hist = []
+        self.transaction_balance_hist = []
         self.trades = Trades()
         ###################################
         self.base_balance_hist = []
@@ -215,9 +216,11 @@ class Torgash:
             self.current_base_balance -= amount
             self.current_trading_balance += (amount / self._current_price) * self.trading_fee_multiplier
             ###
-            self.transaction_datetime.append(self._current_datetime)
+            self.transaction_datetime.append(self.current_datetime)
             self.transaction_type_hist.append('buy')
-            self.transaction_amount_hist.append(amount)
+            self.transaction_balance_hist.append(
+                self.current_base_balance + (self.current_trading_balance * self.current_price))
+            self.transaction_price_hist.append(self.current_price)
             ###
             print(f"|| {self._current_datetime} | Buy | {amount} {self.base_symbol} --> "
                   f"{(amount / self._current_price) * self.trading_fee_multiplier} {self.trading_symbol} || "
@@ -234,9 +237,11 @@ class Torgash:
             self.current_trading_balance -= amount
             self.current_base_balance += (amount * self._current_price) * self.trading_fee_multiplier
             ###
-            self.transaction_datetime.append(self._current_datetime)
+            self.transaction_datetime.append(self.current_datetime)
             self.transaction_type_hist.append('buy')
-            self.transaction_amount_hist.append(amount)
+            self.transaction_balance_hist.append(
+                self.current_base_balance + (self.current_trading_balance * self.current_price))
+            self.transaction_price_hist.append(self.current_price)
             ###
             print(f"|| {self._current_datetime} | Sell | {amount} {self.trading_symbol} --> "
                   f"{(amount * self._current_price) * self.trading_fee_multiplier} {self.base_symbol} || "
