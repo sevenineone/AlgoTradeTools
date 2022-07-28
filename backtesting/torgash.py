@@ -30,7 +30,7 @@ class Trades:
     def __init__(self):
         self.open_order: List[Order,] = []  # [Order, ] orders are open but not executed
         self.open_trade: List[Order,] = []  # [Order, ] open position
-        self.close_trade: List[List[Order,]] = []  # [(Order, Order), ] two opposite order
+        self.close_trades: List[List[Order,]] = []  # [(Order, Order), ] two opposite order
 
     def get_open_trade_amount(self):
         amount = 0
@@ -45,6 +45,16 @@ class Trades:
         if len(self.open_trade) > 0:
             return self.open_trade[0].side
         return None
+
+    def calculate_trade_profit(self, number=-1):  # return profit for one close trade
+        cost_long = 0
+        cost_short = 0
+        for trade in self.close_trades[number]:
+            if trade.side == "buy":
+                cost_long += trade.average * trade.amount
+            elif trade.side == "sell":
+                cost_short += trade.average * trade.amount
+        return cost_short - cost_long
 
 
 class Torgash:
@@ -104,8 +114,9 @@ class Torgash:
         else:  # orders are sent in different directions
             if self.trades.get_open_trade_amount() == order.amount:
                 self.trades.open_trade.append(order)
-                self.trades.close_trade.append(self.trades.open_trade)
+                self.trades.close_trades.append(self.trades.open_trade)
                 self.trades.open_trade = []
+                self.current_base_balance += self.trades.calculate_trade_profit(-1)
             elif self.trades.get_open_trade_amount() > order.amount:
                 self.trades.open_trade.append(order)
             else:  # open trade amount less than new order amount
@@ -216,11 +227,11 @@ class Torgash:
             self.current_base_balance -= amount
             self.current_trading_balance += (amount / self._current_price) * self.trading_fee_multiplier
             ###
-            self.transaction_datetime.append(self.current_datetime)
+            self.transaction_datetime.append(self._current_datetime)
             self.transaction_type_hist.append('buy')
             self.transaction_balance_hist.append(
-                self.current_base_balance + (self.current_trading_balance * self.current_price))
-            self.transaction_price_hist.append(self.current_price)
+                self.current_base_balance + (self.current_trading_balance * self._current_price))
+            self.transaction_price_hist.append(self._current_price)
             ###
             print(f"|| {self._current_datetime} | Buy | {amount} {self.base_symbol} --> "
                   f"{(amount / self._current_price) * self.trading_fee_multiplier} {self.trading_symbol} || "
@@ -237,11 +248,11 @@ class Torgash:
             self.current_trading_balance -= amount
             self.current_base_balance += (amount * self._current_price) * self.trading_fee_multiplier
             ###
-            self.transaction_datetime.append(self.current_datetime)
+            self.transaction_datetime.append(self._current_datetime)
             self.transaction_type_hist.append('buy')
             self.transaction_balance_hist.append(
-                self.current_base_balance + (self.current_trading_balance * self.current_price))
-            self.transaction_price_hist.append(self.current_price)
+                self.current_base_balance + (self.current_trading_balance * self._current_price))
+            self.transaction_price_hist.append(self._current_price)
             ###
             print(f"|| {self._current_datetime} | Sell | {amount} {self.trading_symbol} --> "
                   f"{(amount * self._current_price) * self.trading_fee_multiplier} {self.base_symbol} || "
