@@ -3,12 +3,14 @@ import ta
 import ccxt
 import plotly.graph_objects as go
 from typing import List
+from plotly.subplots import make_subplots
 
 
 class Order:
     """
     ccxt has more class fields
     """
+
     def __init__(self, id, datetime, symbol, type, side, average, amount, info=""):
         self.id = id
         self.datetime = datetime
@@ -26,11 +28,11 @@ class Order:
 
 class Trades:
     def __init__(self):
-        self.open_order: List[Order, ] = []   # [Order, ] orders are open but not executed
-        self.open_trade: List[Order, ] = []  # [Order, ] open position
-        self.close_trade: List[List[Order, ]] = []  # [(Order, Order), ] two opposite order
+        self.open_order: List[Order,] = []  # [Order, ] orders are open but not executed
+        self.open_trade: List[Order,] = []  # [Order, ] open position
+        self.close_trade: List[List[Order,]] = []  # [(Order, Order), ] two opposite order
 
-    def open_trade_amount(self):
+    def get_open_trade_amount(self):
         amount = 0
         for trade in self.open_trade:
             if trade.side == 'buy':
@@ -39,7 +41,7 @@ class Trades:
                 amount -= trade.amount
         return abs(amount)
 
-    def open_trade_side(self):
+    def get_open_trade_side(self):
         if len(self.open_trade) > 0:
             return self.open_trade[0].side
         return None
@@ -54,11 +56,11 @@ class Torgash:
         self.symbol = "BTCUSDT"
         self.trading_fee_multiplier = 1 - 0.0002
         self.min_order_threshold = 5  # equal 5usdt for binance futures
-        self.min_order_step = 0.001   # min step for trading_symbol (btc) 0.001btc binance futures
+        self.min_order_step = 0.001  # min step for trading_symbol (btc) 0.001btc binance futures
         ###################################
-        self.transaction_type_hist = []    # надо убрать
+        self.transaction_type_hist = []  # надо убрать
         self.transaction_amount_hist = []  # надо убрать
-        self.transaction_datetime = []     # надо убрать
+        self.transaction_datetime = []  # надо убрать
         self.trades = Trades()
         ###################################
         self.base_balance_hist = []
@@ -96,20 +98,20 @@ class Torgash:
     def execute_order(self, order: Order):
         if not self.trades.open_trade:  # if there are no open trade
             self.trades.open_trade.append(order)
-        elif self.trades.open_trade_side() == order.side:  # if the direction is the same
+        elif self.trades.get_open_trade_side() == order.side:  # if the direction is the same
             self.trades.open_trade.append(order)
         else:  # orders are sent in different directions
-            if self.trades.open_trade_amount() == order.amount:
+            if self.trades.get_open_trade_amount() == order.amount:
                 self.trades.open_trade.append(order)
                 self.trades.close_trade.append(self.trades.open_trade)
                 self.trades.open_trade = []
-            elif self.trades.open_trade_amount() > order.amount:
+            elif self.trades.get_open_trade_amount() > order.amount:
                 self.trades.open_trade.append(order)
             else:  # open trade amount less than new order amount
                 raise ValueError("Incorrect order amount")
 
     def limits_check(self):
-        for i in len(self.trades.open_order):
+        for i in range(len(self.trades.open_order)):
             if self.trades.open_order[i].side == 'buy':
                 # if buy but limit price > self._current_price (make market order) !!!!!
 
@@ -151,7 +153,7 @@ class Torgash:
         else:
             raise ValueError("Bad type of transaction")
 
-    def createLimitBuyOrder (self, symbol, amount, price, params={}):
+    def createLimitBuyOrder(self, symbol, amount, price, params={}):
         """
         How in ccxt
 
@@ -159,7 +161,7 @@ class Torgash:
         """
         return self.createOrder(symbol=symbol, type="limit", side="buy", amount=amount, price=price, params=params)
 
-    def createLimitSellOrder (self, symbol, amount, price, params={}):
+    def createLimitSellOrder(self, symbol, amount, price, params={}):
         """
         How in ccxt
 
@@ -167,10 +169,10 @@ class Torgash:
         """
         return self.createOrder(symbol=symbol, type="limit", side="sell", amount=amount, price=price, params=params)
 
-    def createMarketOrder (self, symbol, side, amount, params={}):
+    def createMarketOrder(self, symbol, side, amount, params={}):
         return self.createOrder(symbol=symbol, type="market", side=side, amount=amount, params=params)
 
-    def fetchOpenOrders(self, ): # вывод id всех открытых ордеров
+    def fetchOpenOrders(self, ):  # вывод id всех открытых ордеров
         """
         How in ccxt
 
@@ -195,7 +197,7 @@ class Torgash:
         """
         pass
 
-    def cancelOrder(self, id, symbol, params = {}):
+    def cancelOrder(self, id, symbol, params={}):
         """
         How in ccxt
 
@@ -205,7 +207,6 @@ class Torgash:
         :return:
         """
         pass
-
 
     def buy(self, amount=-1., ):  # надо убрать
         if amount < 0:
@@ -288,27 +289,57 @@ class Torgash:
         """ displays count_candlestick_per_plot candlestick at one time on one chart """
         if to_candle == 0 or to_candle > len(self.data):
             to_candle = len(self.data)
-
-        fig = go.Figure()
+        transaction_balance_df = pd.DataFrame(
+            [self.transaction_datetime, self.transaction_balance_hist, self.transaction_price_hist,
+             self.transaction_type_hist]).T
+        fig = make_subplots(rows=2, cols=1, row_width=[0.3, 0.7], shared_xaxes=True)
         for i in range(from_candle, to_candle, count_candlestick_per_plot):
             data_interval = self.data[i:i + count_candlestick_per_plot]
-            fig.add_trace(
-                go.Candlestick(visible=False,
-                               x=data_interval.index.values,
-                               open=data_interval['Open'], high=data_interval['High'],
-                               low=data_interval['Low'], close=data_interval['Close'])
-            )
-        fig.data[0].visible = True
+            transaction_balance_df_interval = transaction_balance_df[
+                transaction_balance_df[0].between(data_interval.index.values[0], data_interval.index.values[-1])]
+            ############################################
+            fig.add_trace(go.Candlestick(x=data_interval.index.values,
+                                         open=data_interval['Open'], high=data_interval['High'],
+                                         low=data_interval['Low'], close=data_interval['Close'],
+                                         name=f'{self.base_symbol}/{self.trading_symbol}',
+                                         hovertext=self.data.Difference,
+                                         increasing_line_color='grey', decreasing_line_color='black', visible=False),
+                          row=1, col=1)
 
+            fig.add_trace(
+                go.Scatter(x=transaction_balance_df_interval[0], y=transaction_balance_df_interval[1], name='balance',
+                           visible=False),
+                row=2, col=1)
+            fig.add_trace(go.Scatter(mode='markers',
+                                     x=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'buy'][0],
+                                     y=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'buy'][2],
+                                     marker_symbol=45,
+                                     marker_color='green',
+                                     marker_size=10, name='buy', visible=False), row=1, col=1)
+            fig.add_trace(go.Scatter(mode='markers',
+                                     x=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'sell'][0],
+                                     y=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'sell'][2],
+                                     marker_symbol=46,
+                                     marker_color='red',
+                                     marker_size=10, name='sell', visible=False), row=1, col=1)
+
+            #################################
+        fig.data[0].visible = True
+        fig.data[1].visible = True
+        fig.data[2].visible = True
+        fig.data[3].visible = True
         #  Create slider
         steps = []
-        for i in range(len(fig.data)):
+        for i in range(0, len(fig.data), 4):
             step = dict(
                 method="update",
                 args=[{"visible": [False] * len(fig.data)},
                       {"title": "Title: " + str(i)}],  # layout attribute
             )
             step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+            step["args"][0]["visible"][i + 1] = True
+            step["args"][0]["visible"][i + 2] = True
+            step["args"][0]["visible"][i + 3] = True
             steps.append(step)
 
         sliders = [dict(
@@ -318,5 +349,5 @@ class Torgash:
             steps=steps
         )]
 
-        fig.update_layout(xaxis_rangeslider_visible=False, sliders=sliders)
+        fig.update_layout(xaxis_rangeslider_visible=False, height=800, sliders=sliders)
         fig.show()
