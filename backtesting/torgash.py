@@ -59,7 +59,8 @@ class Trades:
 
 class Torgash:
     def __init__(self):
-        self.current_base_balance = 1000
+        self.start_base_balance = 1000
+        self.current_base_balance = self.start_base_balance
         self.base_symbol = 'usdt'
         self.current_trading_balance = 0
         self.trading_symbol = 'btc'
@@ -139,6 +140,15 @@ class Torgash:
                     order.set_datetime_execute(self._current_datetime)
                     self.execute_order(order)
 
+    def calculate_order_amount_percent(self, percent=100, is_current_balance=False):
+        lots = 0
+        if is_current_balance:
+            lots = (self.current_base_balance/100 * percent) / self._current_price // self.min_order_step
+        else:
+            lots = (self.start_base_balance/100 * percent) / self._current_price // self.min_order_step
+
+        return lots * self.min_order_step  # amount
+
     def createOrder(self, symbol, type, side, amount, price=None, params={}):
         """
         :param symbol: (String) required Unified CCXT market symbol
@@ -183,31 +193,6 @@ class Torgash:
 
     def createMarketOrder(self, symbol, side, amount, params={}):
         return self.createOrder(symbol=symbol, type="market", side=side, amount=amount, params=params)
-
-    def fetchOpenOrders(self, ):  # вывод id всех открытых ордеров
-        """
-        How in ccxt
-
-        :return:
-        """
-        pass
-
-    def fetchClosedOrders(self):
-        """
-        How in ccxt
-
-        :return:
-        """
-        pass
-
-    def fetchPosition(self, symbol, params={}):
-        """
-
-        :param symbol: (String) required Unified CCXT market symbol ex:"BTC|USDT"
-        :param params:
-        :return:
-        """
-        pass
 
     def cancelOrder(self, id, symbol, params={}):
         """
@@ -367,3 +352,28 @@ class Torgash:
 
         fig.update_layout(xaxis_rangeslider_visible=False, height=800, sliders=sliders)
         fig.show()
+
+    def fetchOpenOrders(self, ):  # вывод id всех открытых ордеров
+        """
+        How in ccxt
+
+        :return:
+        """
+        pass
+
+    def fetchClosedOrders(self):
+        """
+        How in ccxt
+
+        :return:
+        """
+        pass
+
+    def fetchPosition(self, symbol, params={}):
+        """
+
+        :param symbol: (String) required Unified CCXT market symbol ex:"BTC|USDT"
+        :param params:
+        :return:
+        """
+        pass
