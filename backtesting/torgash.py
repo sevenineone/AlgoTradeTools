@@ -11,7 +11,7 @@ class Order:
     ccxt has more class fields
     """
 
-    def __init__(self, id, datetime, symbol, type, side, average, amount, info=""):
+    def __init__(self, id, datetime, symbol, type, side, average, amount, fee, info=""):
         self.id = id
         self.datetime = datetime
         self.datetime_execute = datetime  # CCXT Order DON'T HAVE THIS VARIABLE
@@ -21,6 +21,8 @@ class Order:
         self.average = average  # price
         self.amount = amount
         self.info = info
+
+        self.fee = fee  # in USDT
 
     def set_datetime_execute(self, datetime_execute):
         self.datetime_execute = datetime_execute
@@ -64,8 +66,10 @@ class Torgash:
         self.base_symbol = 'usdt'
         self.current_trading_balance = 0
         self.trading_symbol = 'btc'
-        self.symbol = "BTCUSDT"
-        self.trading_fee_multiplier = 1 - 0.0002
+        self.  = "BTCUSDT"
+        self.trading_market_fee_multiplier = 0.0004
+        self.trading_limit_fee_multiplier = 0.0002
+        self.trading_fee_multiplier = 1 - self.trading_market_fee_multiplier  # не использовать, удалить
         self.min_order_threshold = 5  # equal 5usdt for binance futures
         self.min_order_step = 0.001  # min step for trading_symbol (btc) 0.001btc binance futures
         ###################################
@@ -172,11 +176,13 @@ class Torgash:
             if amount * price < self.min_order_threshold:
                 del order
                 raise ValueError("Order price less then 5$")
+            order.fee = self.trading_market_fee_multiplier * amount * price
             self.trades.open_order.append(order)
         elif type == "market":
             if amount * self._current_price < self.min_order_threshold:
                 del order
                 raise ValueError("Order price less then 5$")
+            order.fee = self.trading_market_fee_multiplier * amount * self._current_price
             self.execute_order(order)
         else:
             raise ValueError("Bad type of transaction")
