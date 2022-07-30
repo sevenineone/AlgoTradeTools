@@ -28,9 +28,9 @@ class Order:
 
 class Trades:
     def __init__(self):
-        self.open_order: List[Order,] = []  # [Order, ] orders are open but not executed
-        self.open_trade: List[Order,] = []  # [Order, ] open position
-        self.close_trades: List[List[Order,]] = []  # [(Order, Order), ] two opposite order
+        self.open_order: List[Order, ] = []  # [Order, ] orders are open but not executed
+        self.open_trade: List[Order, ] = []  # [Order, ] open position
+        self.close_trades: List[List[Order, ]] = []  # [(Order, Order), ] two opposite order
 
     def get_open_trade_amount(self):
         amount = 0
@@ -140,14 +140,14 @@ class Torgash:
                     order.set_datetime_execute(self._current_datetime)
                     self.execute_order(order)
 
-    def calculate_order_amount_percent(self, percent=100, is_current_balance=False):
-        lots = 0
-        if is_current_balance:
-            lots = (self.current_base_balance/100 * percent) / self._current_price // self.min_order_step
+    def calculate_order_amount(self, percent=100, usdt=100, based_in_percent=True):
+        cost = 0
+        if based_in_percent:
+            cost = (self.current_base_balance/100 * percent)
         else:
-            lots = (self.start_base_balance/100 * percent) / self._current_price // self.min_order_step
+            cost = usdt
 
-        return lots * self.min_order_step  # amount
+        return cost / self._current_price // self.min_order_step * self.min_order_step  # amount
 
     def createOrder(self, symbol, type, side, amount, price=None, params={}):
         """
@@ -166,6 +166,9 @@ class Torgash:
         mk.create_order(symbol='XRP/BTC', type='stop_loss_limit', side='sell', amount=1,
                         price=0.6, params={'stopPrice':0.60})
         """
+
+        if amount * self._current_price < self.min_order_threshold:
+            raise ValueError("Order price less then 5$")
 
         order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount)
         if type == "limit":
