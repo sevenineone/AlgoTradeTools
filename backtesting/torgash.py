@@ -58,6 +58,9 @@ class Trades:
                 cost_short += trade.average * trade.amount
         return cost_short - cost_long
 
+    def get_all_close_order(self):
+        return [item for i in self.close_trades for item in i]
+
 
 class Torgash:
     def __init__(self):
@@ -66,7 +69,7 @@ class Torgash:
         self.base_symbol = 'usdt'
         self.current_trading_balance = 0
         self.trading_symbol = 'btc'
-        self.  = "BTCUSDT"
+        self.symbol = "BTCUSDT"
         self.trading_market_fee_multiplier = 0.0004
         self.trading_limit_fee_multiplier = 0.0002
         self.trading_fee_multiplier = 1 - self.trading_market_fee_multiplier  # не использовать, удалить
@@ -172,6 +175,10 @@ class Torgash:
         """
 
         order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount)
+
+        if symbol == "":
+            order.symbol = self.symbol
+
         if type == "limit":
             if amount * price < self.min_order_threshold:
                 del order
