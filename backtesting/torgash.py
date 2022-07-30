@@ -167,13 +167,16 @@ class Torgash:
                         price=0.6, params={'stopPrice':0.60})
         """
 
-        if amount * self._current_price < self.min_order_threshold:
-            raise ValueError("Order price less then 5$")
-
         order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount)
         if type == "limit":
+            if amount * price < self.min_order_threshold:
+                del order
+                raise ValueError("Order price less then 5$")
             self.trades.open_order.append(order)
         elif type == "market":
+            if amount * self._current_price < self.min_order_threshold:
+                del order
+                raise ValueError("Order price less then 5$")
             self.execute_order(order)
         else:
             raise ValueError("Bad type of transaction")
