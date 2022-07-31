@@ -64,10 +64,10 @@ class Trades:
 
 class Torgash:
     def __init__(self):
-        self.start_base_balance = 1000
-        self.current_base_balance = self.start_base_balance
+        self.start_balance = 1000
+        # self.current_balance = self.start_balance
         self.base_symbol = 'usdt'
-        self.current_trading_balance = 0
+        # self.current_trading_balance = 0
         self.trading_symbol = 'btc'
         self.symbol = "BTCUSDT"
         self.trading_market_fee_multiplier = 0.0004
@@ -76,18 +76,20 @@ class Torgash:
         self.min_order_threshold = 5  # equal 5usdt for binance futures
         self.min_order_step = 0.001  # min step for trading_symbol (btc) 0.001btc binance futures
         ###################################
-        self.transaction_type_hist = []  # надо убрать
-        self.transaction_datetime = []  # надо убрать
-        self.transaction_price_hist = []
-        self.transaction_balance_hist = []
+        self.transaction_type_hist = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
+        self.transaction_datetime = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
+        self.transaction_price_hist = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
+        self.transaction_balance_hist = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
         self.trades = Trades()
-        ###################################
-        self.base_balance_hist = []
-        self.trading_balance_hist = []
         ###################################
         self.data = None
         self._current_datetime = None
         self._current_price = 0
+        ###################################
+        self.balance_hist = []
+        self.balance_hist_date = []   # я хотел сделать но чо то не срослось. ошибку выдавало
+        # self.base_balance_hist = []  # надо убрать
+        # self.trading_balance_hist = []  # надо убрать
         ###################################
 
     def set_data(self, ohlcv_df: pd.DataFrame, date_time=0, open=1, high=2, low=3, close=4, volume=5):
@@ -124,7 +126,7 @@ class Torgash:
                 self.trades.open_trade.append(order)
                 self.trades.close_trades.append(self.trades.open_trade)
                 self.trades.open_trade = []
-                self.current_base_balance += self.trades.calculate_trade_profit(-1)
+                self.balance_hist.append(self.balance_hist[-1] + self.trades.calculate_trade_profit(-1))
             elif self.trades.get_open_trade_amount() > order.amount:
                 self.trades.open_trade.append(order)
             else:  # open trade amount less than new order amount
@@ -148,12 +150,13 @@ class Torgash:
                     self.execute_order(order)
 
     def calculate_order_amount(self, percent=100, usdt=100, based_in_percent=True):
+        # open_position_cost = self.trades.get_open_trade_amount() * self._current_price  # open position price
+
         cost = 0
         if based_in_percent:
-            cost = (self.current_base_balance/100 * percent)
+            cost = (self.balance_hist[-1] / 100 * percent)
         else:
             cost = usdt
-
         return cost / self._current_price // self.min_order_step * self.min_order_step  # amount
 
     def createOrder(self, symbol, type, side, amount, price=None, params={}):
@@ -223,23 +226,23 @@ class Torgash:
         :return:
         """
         pass
-
+    """
     def buy(self, amount=-1., ):  # надо убрать
         if amount < 0:
-            amount = self.current_base_balance
-        if self.current_base_balance >= amount >= self.min_order_threshold:
-            self.current_base_balance -= amount
+            amount = self.current_balance
+        if self.current_balance >= amount >= self.min_order_threshold:
+            self.current_balance -= amount
             self.current_trading_balance += (amount / self._current_price) * self.trading_fee_multiplier
             ###
             self.transaction_datetime.append(self._current_datetime)
             self.transaction_type_hist.append('buy')
             self.transaction_balance_hist.append(
-                self.current_base_balance + (self.current_trading_balance * self._current_price))
+                self.current_balance + (self.current_trading_balance * self._current_price))
             self.transaction_price_hist.append(self._current_price)
             ###
             print(f"|| {self._current_datetime} | Buy | {amount} {self.base_symbol} --> "
                   f"{(amount / self._current_price) * self.trading_fee_multiplier} {self.trading_symbol} || "
-                  f"Balance: {self.current_base_balance} {self.base_symbol} | "
+                  f"Balance: {self.current_balance} {self.base_symbol} | "
                   f"{self.current_trading_balance} {self.trading_symbol} ||")
             self.print_ind()  # xtra output for necessary indicators
         else:
@@ -250,17 +253,17 @@ class Torgash:
             amount = self.current_trading_balance
         if self.current_trading_balance >= amount >= self.min_order_threshold:
             self.current_trading_balance -= amount
-            self.current_base_balance += (amount * self._current_price) * self.trading_fee_multiplier
+            self.current_balance += (amount * self._current_price) * self.trading_fee_multiplier
             ###
             self.transaction_datetime.append(self._current_datetime)
             self.transaction_type_hist.append('buy')
             self.transaction_balance_hist.append(
-                self.current_base_balance + (self.current_trading_balance * self._current_price))
+                self.current_balance + (self.current_trading_balance * self._current_price))
             self.transaction_price_hist.append(self._current_price)
             ###
             print(f"|| {self._current_datetime} | Sell | {amount} {self.trading_symbol} --> "
                   f"{(amount * self._current_price) * self.trading_fee_multiplier} {self.base_symbol} || "
-                  f"Balance: {self.current_base_balance} {self.base_symbol} | "
+                  f"Balance: {self.current_balance} {self.base_symbol} | "
                   f"{self.current_trading_balance} {self.trading_symbol} ||")
             self.print_ind()  # xtra output for necessary indicators
         else:
@@ -268,19 +271,19 @@ class Torgash:
 
     def print_ind(self):  # put indicators u need (ex: )
         print("")
-
+    """
     def step_strategy(self, datetime):
         pass
 
     def run_step_strategy(self):
-        self.base_balance_hist.append(self.current_base_balance)
+        # self.balance_hist.append(self.current_base_balance)
         for datetime, value in self.data.iterrows():
             self._current_datetime = datetime
             self._current_price = self.data[datetime].Open
             self.step_strategy(datetime)
             self.limits_check()
 
-            #  self.base_balance_hist.append(self.current_base_balance)
+            #  self.balance_hist.append(self.current_base_balance)
             #  self.trading_balance_hist.append(self.current_trading_balance)
 
     def run_strategy(self):
@@ -290,20 +293,57 @@ class Torgash:
         fast_above_slow = self.data.sma_fast[self.data.head(1).index[0]] > self.data.sma_slow[
             self.data.head(1).index[0]]
         #####################################################
-        self.base_balance_hist.append(self.current_base_balance)
-        self.trading_balance_hist.append(self.current_trading_balance)
+        self.balance_hist.append(self.start_balance)
+        # self.trading_balance_hist.append(self.current_trading_balance)
         for datetime, value in self.data.iterrows():
             self._current_datetime = datetime
             self._current_price = value.Close
             # There you should implement your strategy
             if fast_above_slow and self.data.sma_fast[datetime] < self.data.sma_slow[datetime]:
-                self.sell()
+                self.createMarketOrder("", "sell", self.calculate_order_amount())
             elif not fast_above_slow and self.data.sma_fast[datetime] > self.data.sma_slow[datetime]:
-                self.buy()
+                self.createMarketOrder("", "buy", self.calculate_order_amount())
             fast_above_slow = self.data.sma_fast[datetime] > self.data.sma_slow[datetime]
             #####################################################
-            self.base_balance_hist.append(self.current_base_balance)
-            self.trading_balance_hist.append(self.current_trading_balance)
+            # self.balance_hist.append(self.balance_hist[-1])
+            # self.trading_balance_hist.append(self.current_trading_balance)
+
+    def plot_candlestick(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):
+        """ displays count_candlestick_per_plot candlestick at one time on one chart """
+        if to_candle == 0 or to_candle > len(self.data):
+            to_candle = len(self.data)
+
+        fig = go.Figure()
+        for i in range(from_candle, to_candle, count_candlestick_per_plot):
+            data_interval = self.data[i:i + count_candlestick_per_plot]
+            fig.add_trace(
+                go.Candlestick(visible=False,
+                               x=data_interval.index.values,
+                               open=data_interval['Open'], high=data_interval['High'],
+                               low=data_interval['Low'], close=data_interval['Close'])
+            )
+        fig.data[0].visible = True
+
+        #  Create slider
+        steps = []
+        for i in range(len(fig.data)):
+            step = dict(
+                method="update",
+                args=[{"visible": [False] * len(fig.data)},
+                      {"title": "Title: " + str(i)}],  # layout attribute
+            )
+            step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
+            steps.append(step)
+
+        sliders = [dict(
+            active=0,
+            currentvalue={"prefix": "Date: "},
+            pad={"t": 30},
+            steps=steps
+        )]
+
+        fig.update_layout(xaxis_rangeslider_visible=False, sliders=sliders)
+        fig.show()
 
     def plot(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):  # Надо подписи на графике поменять
         """ displays count_candlestick_per_plot candlestick at one time on one chart """
