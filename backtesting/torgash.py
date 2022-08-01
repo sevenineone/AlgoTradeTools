@@ -1,6 +1,5 @@
 import pandas as pd
 import ta
-import ccxt
 import plotly.graph_objects as go
 from typing import List
 from plotly.subplots import make_subplots
@@ -30,9 +29,9 @@ class Order:
 
 class Trades:
     def __init__(self):
-        self.open_order: List[Order, ] = []  # [Order, ] orders are open but not executed
-        self.open_trade: List[Order, ] = []  # [Order, ] open position
-        self.close_trades: List[List[Order, ]] = []  # [(Order, Order), ] two opposite order
+        self.open_order: List[Order,] = []  # [Order, ] orders are open but not executed
+        self.open_trade: List[Order,] = []  # [Order, ] open position
+        self.close_trades: List[List[Order,]] = []  # [(Order, Order), ] two opposite order
 
     def get_open_trade_amount(self):
         amount = 0
@@ -53,33 +52,27 @@ class Trades:
         cost_short = 0
         for trade in self.close_trades[number]:
             if trade.side == "buy":
-                cost_long += trade.average * trade.amount
+                cost_long += trade.average * trade.amount + trade.fee
             elif trade.side == "sell":
-                cost_short += trade.average * trade.amount
+                cost_short += trade.average * trade.amount - trade.fee
         return cost_short - cost_long
 
     def get_all_close_order(self):
-        return [item for i in self.close_trades for item in i]
+        return [[item.datetime, item.average, item.side, item.amount] for i in self.close_trades for item in i]
 
 
 class Torgash:
     def __init__(self):
         self.start_balance = 1000
         # self.current_balance = self.start_balance
-        self.base_symbol = 'usdt'
         # self.current_trading_balance = 0
-        self.trading_symbol = 'btc'
-        self.symbol = "BTCUSDT"
+        self.symbol = "ETH/USDT" # always use /
         self.trading_market_fee_multiplier = 0.0004
         self.trading_limit_fee_multiplier = 0.0002
         self.trading_fee_multiplier = 1 - self.trading_market_fee_multiplier  # не использовать, удалить
         self.min_order_threshold = 5  # equal 5usdt for binance futures
         self.min_order_step = 0.001  # min step for trading_symbol (btc) 0.001btc binance futures
         ###################################
-        self.transaction_type_hist = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
-        self.transaction_datetime = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
-        self.transaction_price_hist = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
-        self.transaction_balance_hist = []  # надо убрать Есть в self.trades.get_all_close_order (взять соотв. поля)
         self.trades = Trades()
         ###################################
         self.data = None
@@ -87,9 +80,8 @@ class Torgash:
         self._current_price = 0
         ###################################
         self.balance_hist = []
-        self.balance_hist_date = []   # я хотел сделать но чо то не срослось. ошибку выдавало
-        # self.base_balance_hist = []  # надо убрать
-        # self.trading_balance_hist = []  # надо убрать
+        self.datetime_balance_hist = []
+        self.balance_hist_date = []  # я хотел сделать но чо то не срослось. ошибку выдавало
         ###################################
 
     def set_data(self, ohlcv_df: pd.DataFrame, date_time=0, open=1, high=2, low=3, close=4, volume=5):
@@ -106,9 +98,10 @@ class Torgash:
         except:
             raise ValueError("Datetime column format must be unix or string format.")
         # calculate indicators to dataframe
-        # self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
-        # self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=100))
-        self.data.columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']  # name the columns the way you want
+        self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
+        self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=100))
+        self.data.columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume', 'sma_fast',
+                             'sma_slow']  # name the columns the way you want
         #####################################################
         self.data.set_index('Datetime', inplace=True)
 
@@ -127,6 +120,7 @@ class Torgash:
                 self.trades.close_trades.append(self.trades.open_trade)
                 self.trades.open_trade = []
                 self.balance_hist.append(self.balance_hist[-1] + self.trades.calculate_trade_profit(-1))
+                self.datetime_balance_hist.append(self._current_datetime)
             elif self.trades.get_open_trade_amount() > order.amount:
                 self.trades.open_trade.append(order)
             else:  # open trade amount less than new order amount
@@ -159,7 +153,7 @@ class Torgash:
             cost = usdt
         return cost / self._current_price // self.min_order_step * self.min_order_step  # amount
 
-    def createOrder(self, symbol, type, side, amount, price=None, params={}):
+    def createOrder(self, type, side, amount, symbol="", price=-1, params={}):
         """
         :param symbol: (String) required Unified CCXT market symbol
         :param type: "market" "limit" see #custom-order-params and #other-order-types for non-unified types
@@ -177,33 +171,33 @@ class Torgash:
                         price=0.6, params={'stopPrice':0.60})
         """
 
-        order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount)
-
         if symbol == "":
-            order.symbol = self.symbol
-
+            symbol = self.symbol
+        if price == -1:
+            price = self._current_price
         if type == "limit":
-            if amount * price < self.min_order_threshold:
-                del order
-                raise ValueError("Order price less then 5$")
-            order.fee = self.trading_market_fee_multiplier * amount * price
+            if amount * self._current_price < self.min_order_threshold:
+                raise ValueError(f"Order price less then {self.min_order_threshold}$")
+            fee = self.trading_market_fee_multiplier * amount * self._current_price
+            order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount, fee=fee)
             self.trades.open_order.append(order)
         elif type == "market":
             if amount * self._current_price < self.min_order_threshold:
-                del order
-                raise ValueError("Order price less then 5$")
-            order.fee = self.trading_market_fee_multiplier * amount * self._current_price
+                raise ValueError(f"Order price less then {self.min_order_threshold}$")
+            fee = self.trading_market_fee_multiplier * amount * self._current_price
+            order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount, fee=fee)
+            print(f"{side} {amount} {symbol.split('/')[0]} | Price: {price} {symbol.split('/')[1]}")
             self.execute_order(order)
         else:
             raise ValueError("Bad type of transaction")
 
-    def createLimitBuyOrder(self, symbol, amount, price, params={}):
+    def createLimitBuyOrder(self, symbol, amount, params={}):
         """
         How in ccxt
 
         :return:
         """
-        return self.createOrder(symbol=symbol, type="limit", side="buy", amount=amount, price=price, params=params)
+        return self.createOrder(symbol=symbol, type="limit", side="buy", amount=amount, params=params)
 
     def createLimitSellOrder(self, symbol, amount, price, params={}):
         """
@@ -226,52 +220,8 @@ class Torgash:
         :return:
         """
         pass
-    """
-    def buy(self, amount=-1., ):  # надо убрать
-        if amount < 0:
-            amount = self.current_balance
-        if self.current_balance >= amount >= self.min_order_threshold:
-            self.current_balance -= amount
-            self.current_trading_balance += (amount / self._current_price) * self.trading_fee_multiplier
-            ###
-            self.transaction_datetime.append(self._current_datetime)
-            self.transaction_type_hist.append('buy')
-            self.transaction_balance_hist.append(
-                self.current_balance + (self.current_trading_balance * self._current_price))
-            self.transaction_price_hist.append(self._current_price)
-            ###
-            print(f"|| {self._current_datetime} | Buy | {amount} {self.base_symbol} --> "
-                  f"{(amount / self._current_price) * self.trading_fee_multiplier} {self.trading_symbol} || "
-                  f"Balance: {self.current_balance} {self.base_symbol} | "
-                  f"{self.current_trading_balance} {self.trading_symbol} ||")
-            self.print_ind()  # xtra output for necessary indicators
-        else:
-            print("Buy attempt, but not enough money.")
 
-    def sell(self, amount=-1., ):  # надо убрать
-        if amount < 0:
-            amount = self.current_trading_balance
-        if self.current_trading_balance >= amount >= self.min_order_threshold:
-            self.current_trading_balance -= amount
-            self.current_balance += (amount * self._current_price) * self.trading_fee_multiplier
-            ###
-            self.transaction_datetime.append(self._current_datetime)
-            self.transaction_type_hist.append('buy')
-            self.transaction_balance_hist.append(
-                self.current_balance + (self.current_trading_balance * self._current_price))
-            self.transaction_price_hist.append(self._current_price)
-            ###
-            print(f"|| {self._current_datetime} | Sell | {amount} {self.trading_symbol} --> "
-                  f"{(amount * self._current_price) * self.trading_fee_multiplier} {self.base_symbol} || "
-                  f"Balance: {self.current_balance} {self.base_symbol} | "
-                  f"{self.current_trading_balance} {self.trading_symbol} ||")
-            self.print_ind()  # xtra output for necessary indicators
-        else:
-            print("Sell attempt, but not enough money.")
 
-    def print_ind(self):  # put indicators u need (ex: )
-        print("")
-    """
     def step_strategy(self, datetime):
         pass
 
@@ -300,9 +250,9 @@ class Torgash:
             self._current_price = value.Close
             # There you should implement your strategy
             if fast_above_slow and self.data.sma_fast[datetime] < self.data.sma_slow[datetime]:
-                self.createMarketOrder("", "sell", self.calculate_order_amount())
+                self.createMarketOrder("", "sell", 0.02)
             elif not fast_above_slow and self.data.sma_fast[datetime] > self.data.sma_slow[datetime]:
-                self.createMarketOrder("", "buy", self.calculate_order_amount())
+                self.createMarketOrder("", "buy", 0.02)
             fast_above_slow = self.data.sma_fast[datetime] > self.data.sma_slow[datetime]
             #####################################################
             # self.balance_hist.append(self.balance_hist[-1])
@@ -349,38 +299,39 @@ class Torgash:
         """ displays count_candlestick_per_plot candlestick at one time on one chart """
         if to_candle == 0 or to_candle > len(self.data):
             to_candle = len(self.data)
-        transaction_balance_df = pd.DataFrame(
-            [self.transaction_datetime, self.transaction_balance_hist, self.transaction_price_hist,
-             self.transaction_type_hist]).T
+
+        transaction_df = pd.DataFrame(data=self.trades.get_all_close_order(), columns=['datetime', 'average', 'side', 'amount'])
+        balance_df = pd.DataFrame([self.datetime_balance_hist, self.balance_hist]).T
         fig = make_subplots(rows=2, cols=1, row_width=[0.3, 0.7], shared_xaxes=True)
         for i in range(from_candle, to_candle, count_candlestick_per_plot):
             data_interval = self.data[i:i + count_candlestick_per_plot]
-            transaction_balance_df_interval = transaction_balance_df[
-                transaction_balance_df[0].between(data_interval.index.values[0], data_interval.index.values[-1])]
+            transaction_df_interval = transaction_df[transaction_df['datetime'].between(data_interval.index.values[0], data_interval.index.values[-1])]
+            balance_df_interval = balance_df[balance_df[0].between(data_interval.index.values[0], data_interval.index.values[-1])]
             ############################################
             fig.add_trace(go.Candlestick(x=data_interval.index.values,
                                          open=data_interval['Open'], high=data_interval['High'],
                                          low=data_interval['Low'], close=data_interval['Close'],
-                                         name=f'{self.base_symbol}/{self.trading_symbol}',
-                                         hovertext=self.data.Difference,
+                                         name=self.symbol,
                                          increasing_line_color='grey', decreasing_line_color='black', visible=False),
                           row=1, col=1)
 
             fig.add_trace(
-                go.Scatter(x=transaction_balance_df_interval[0], y=transaction_balance_df_interval[1], name='balance',
+                go.Scatter(x=balance_df_interval[0], y=balance_df_interval[1], name='balance', mode='lines+markers',
                            visible=False),
                 row=2, col=1)
             fig.add_trace(go.Scatter(mode='markers',
-                                     x=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'buy'][0],
-                                     y=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'buy'][2],
+                                     x=transaction_df_interval[transaction_df_interval['side'] == 'buy']['datetime'],
+                                     y=transaction_df_interval[transaction_df_interval['side'] == 'buy']['average'],
                                      marker_symbol=45,
                                      marker_color='green',
+                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell']['amount'],
                                      marker_size=10, name='buy', visible=False), row=1, col=1)
             fig.add_trace(go.Scatter(mode='markers',
-                                     x=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'sell'][0],
-                                     y=transaction_balance_df_interval[transaction_balance_df_interval[3] == 'sell'][2],
+                                     x=transaction_df_interval[transaction_df_interval['side'] == 'sell']['datetime'],
+                                     y=transaction_df_interval[transaction_df_interval['side'] == 'sell']['average'],
                                      marker_symbol=46,
                                      marker_color='red',
+                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell']['amount'],
                                      marker_size=10, name='sell', visible=False), row=1, col=1)
 
             #################################
