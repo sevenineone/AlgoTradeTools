@@ -64,8 +64,6 @@ class Trades:
 class Torgash:
     def __init__(self):
         self.start_balance = 1000
-        # self.current_balance = self.start_balance
-        # self.current_trading_balance = 0
         self.symbol = "ETH/USDT" # always use /
         self.trading_market_fee_multiplier = 0.0004
         self.trading_limit_fee_multiplier = 0.0002
@@ -81,10 +79,9 @@ class Torgash:
         ###################################
         self.balance_hist = []
         self.datetime_balance_hist = []
-        self.balance_hist_date = []  # я хотел сделать но чо то не срослось. ошибку выдавало
         ###################################
 
-    def set_data(self, ohlcv_df: pd.DataFrame, date_time=0, open=1, high=2, low=3, close=4, volume=5):
+    def set_data(self, ohlcv_df: pd.DataFrame, date_time=0, open=1, high=2, low=3, close=4, volume=5, symbol=""):
         self.data = pd.DataFrame([
             ohlcv_df[ohlcv_df.columns[date_time]],
             ohlcv_df[ohlcv_df.columns[open]],
@@ -97,6 +94,8 @@ class Torgash:
             self.data['Datetime'] = pd.to_datetime(self.data['Datetime'], unit='ms')
         except:
             raise ValueError("Datetime column format must be unix or string format.")
+        self.symbol = symbol
+
         # calculate indicators to dataframe
         self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
         self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=100))
@@ -107,7 +106,9 @@ class Torgash:
 
     def set_data_from_csv(self, filename: str, date_time=0, open=1, high=2, low=3, close=4, volume=5):
         ohlcv_df = pd.read_csv(filename)
-        self.set_data(ohlcv_df, date_time=date_time, open=open, high=high, low=low, close=close, volume=volume)
+        symbol = f"{filename.split('_')[-3].split('/')[-1]}/{filename.split('_')[-2]}"
+        self.set_data(ohlcv_df, date_time=date_time, open=open, high=high,
+                      low=low, close=close, volume=volume, symbol=symbol)
 
     def execute_order(self, order: Order):
         if not self.trades.open_trade:  # if there are no open trade
@@ -153,7 +154,7 @@ class Torgash:
             cost = usdt
         return cost / self._current_price // self.min_order_step * self.min_order_step  # amount
 
-    def createOrder(self, type, side, amount, symbol="", price=-1, params={}):
+    def createOrder(self, type, side, amount, symbol="", price=None, params={}):
         """
         :param symbol: (String) required Unified CCXT market symbol
         :param type: "market" "limit" see #custom-order-params and #other-order-types for non-unified types
@@ -173,31 +174,31 @@ class Torgash:
 
         if symbol == "":
             symbol = self.symbol
-        if price == -1:
-            price = self._current_price
+
         if type == "limit":
             if amount * self._current_price < self.min_order_threshold:
                 raise ValueError(f"Order price less then {self.min_order_threshold}$")
-            fee = self.trading_market_fee_multiplier * amount * self._current_price
+            fee = self.trading_limit_fee_multiplier * amount * price
             order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount, fee=fee)
             self.trades.open_order.append(order)
         elif type == "market":
             if amount * self._current_price < self.min_order_threshold:
                 raise ValueError(f"Order price less then {self.min_order_threshold}$")
-            fee = self.trading_market_fee_multiplier * amount * self._current_price
+            price = self._current_price
+            fee = self.trading_market_fee_multiplier * amount * price
             order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount, fee=fee)
             print(f"{side} {amount} {symbol.split('/')[0]} | Price: {price} {symbol.split('/')[1]}")
             self.execute_order(order)
         else:
             raise ValueError("Bad type of transaction")
 
-    def createLimitBuyOrder(self, symbol, amount, params={}):
+    def createLimitBuyOrder(self, symbol, amount, price, params={}):
         """
         How in ccxt
 
         :return:
         """
-        return self.createOrder(symbol=symbol, type="limit", side="buy", amount=amount, params=params)
+        return self.createOrder(symbol=symbol, type="limit", side="buy", amount=amount, price=price, params=params)
 
     def createLimitSellOrder(self, symbol, amount, price, params={}):
         """
@@ -220,7 +221,6 @@ class Torgash:
         :return:
         """
         pass
-
 
     def step_strategy(self, datetime):
         pass
@@ -249,14 +249,12 @@ class Torgash:
             self._current_datetime = datetime
             self._current_price = value.Close
             # There you should implement your strategy
-            if fast_above_slow and self.data.sma_fast[datetime] < self.data.sma_slow[datetime]:
+            # print(" ", type(fast_above_slow), type(self.data.sma_fast[datetime]), type(self.data.sma_slow[datetime]))
+            if fast_above_slow and (self.data.sma_fast[datetime] < self.data.sma_slow[datetime]):
                 self.createMarketOrder("", "sell", 0.02)
             elif not fast_above_slow and self.data.sma_fast[datetime] > self.data.sma_slow[datetime]:
                 self.createMarketOrder("", "buy", 0.02)
             fast_above_slow = self.data.sma_fast[datetime] > self.data.sma_slow[datetime]
-            #####################################################
-            # self.balance_hist.append(self.balance_hist[-1])
-            # self.trading_balance_hist.append(self.current_trading_balance)
 
     def plot_candlestick(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):
         """ displays count_candlestick_per_plot candlestick at one time on one chart """
