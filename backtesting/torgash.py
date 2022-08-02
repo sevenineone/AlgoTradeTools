@@ -1,3 +1,5 @@
+import re
+
 import pandas as pd
 import ta
 import plotly.graph_objects as go
@@ -64,7 +66,7 @@ class Trades:
 class Torgash:
     def __init__(self):
         self.start_balance = 1000
-        self.symbol = "ETH/USDT" # always use /
+        self.symbol = "ETH/USDT"  # always use /
         self.trading_market_fee_multiplier = 0.0004
         self.trading_limit_fee_multiplier = 0.0002
         self.trading_fee_multiplier = 1 - self.trading_market_fee_multiplier  # не использовать, удалить
@@ -94,7 +96,12 @@ class Torgash:
             self.data['Datetime'] = pd.to_datetime(self.data['Datetime'], unit='ms')
         except:
             raise ValueError("Datetime column format must be unix or string format.")
-        self.symbol = symbol
+
+        if self.data.isnull().values.any():
+            raise ValueError("Corrupted data (Nan).")
+
+        if re.fullmatch('''[a-zA-Z]+/[a-zA-Z]''', symbol):
+            self.symbol = symbol
 
         # calculate indicators to dataframe
         self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
@@ -192,7 +199,7 @@ class Torgash:
         else:
             raise ValueError("Bad type of transaction")
 
-    def createLimitBuyOrder(self, symbol, amount, price, params={}):
+    def createLimitBuyOrder(self, amount, price, symbol="", params={}):
         """
         How in ccxt
 
@@ -200,7 +207,7 @@ class Torgash:
         """
         return self.createOrder(symbol=symbol, type="limit", side="buy", amount=amount, price=price, params=params)
 
-    def createLimitSellOrder(self, symbol, amount, price, params={}):
+    def createLimitSellOrder(self, amount, price, symbol="", params={}):
         """
         How in ccxt
 
@@ -208,7 +215,7 @@ class Torgash:
         """
         return self.createOrder(symbol=symbol, type="limit", side="sell", amount=amount, price=price, params=params)
 
-    def createMarketOrder(self, symbol, side, amount, params={}):
+    def createMarketOrder(self, side, amount, symbol="", params={}):
         return self.createOrder(symbol=symbol, type="market", side=side, amount=amount, params=params)
 
     def cancelOrder(self, id, symbol, params={}):
@@ -249,11 +256,10 @@ class Torgash:
             self._current_datetime = datetime
             self._current_price = value.Close
             # There you should implement your strategy
-            # print(" ", type(fast_above_slow), type(self.data.sma_fast[datetime]), type(self.data.sma_slow[datetime]))
             if fast_above_slow and (self.data.sma_fast[datetime] < self.data.sma_slow[datetime]):
-                self.createMarketOrder("", "sell", 0.02)
+                self.createMarketOrder("sell", 0.02)
             elif not fast_above_slow and self.data.sma_fast[datetime] > self.data.sma_slow[datetime]:
-                self.createMarketOrder("", "buy", 0.02)
+                self.createMarketOrder("buy", 0.02)
             fast_above_slow = self.data.sma_fast[datetime] > self.data.sma_slow[datetime]
 
     def plot_candlestick(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):
@@ -298,13 +304,16 @@ class Torgash:
         if to_candle == 0 or to_candle > len(self.data):
             to_candle = len(self.data)
 
-        transaction_df = pd.DataFrame(data=self.trades.get_all_close_order(), columns=['datetime', 'average', 'side', 'amount'])
+        transaction_df = pd.DataFrame(data=self.trades.get_all_close_order(),
+                                      columns=['datetime', 'average', 'side', 'amount'])
         balance_df = pd.DataFrame([self.datetime_balance_hist, self.balance_hist]).T
         fig = make_subplots(rows=2, cols=1, row_width=[0.3, 0.7], shared_xaxes=True)
         for i in range(from_candle, to_candle, count_candlestick_per_plot):
             data_interval = self.data[i:i + count_candlestick_per_plot]
-            transaction_df_interval = transaction_df[transaction_df['datetime'].between(data_interval.index.values[0], data_interval.index.values[-1])]
-            balance_df_interval = balance_df[balance_df[0].between(data_interval.index.values[0], data_interval.index.values[-1])]
+            transaction_df_interval = transaction_df[
+                transaction_df['datetime'].between(data_interval.index.values[0], data_interval.index.values[-1])]
+            balance_df_interval = balance_df[
+                balance_df[0].between(data_interval.index.values[0], data_interval.index.values[-1])]
             ############################################
             fig.add_trace(go.Candlestick(x=data_interval.index.values,
                                          open=data_interval['Open'], high=data_interval['High'],
@@ -322,14 +331,16 @@ class Torgash:
                                      y=transaction_df_interval[transaction_df_interval['side'] == 'buy']['average'],
                                      marker_symbol=45,
                                      marker_color='green',
-                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell']['amount'],
+                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell'][
+                                         'amount'],
                                      marker_size=10, name='buy', visible=False), row=1, col=1)
             fig.add_trace(go.Scatter(mode='markers',
                                      x=transaction_df_interval[transaction_df_interval['side'] == 'sell']['datetime'],
                                      y=transaction_df_interval[transaction_df_interval['side'] == 'sell']['average'],
                                      marker_symbol=46,
                                      marker_color='red',
-                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell']['amount'],
+                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell'][
+                                         'amount'],
                                      marker_size=10, name='sell', visible=False), row=1, col=1)
 
             #################################
