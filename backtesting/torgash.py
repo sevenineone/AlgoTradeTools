@@ -28,6 +28,32 @@ class Order:
     def set_datetime_execute(self, datetime_execute):
         self.datetime_execute = datetime_execute
 
+    def get_order_info(self, datetime=False, datetime_execute=False, type=False,
+                         side=False, average=False, amount=False, info=False, fee=False, cost=False):
+        s = ''
+        if datetime:
+            s += f"{self.datetime} "
+        if datetime_execute:
+            s += f", execute: {self.datetime_execute} "
+        if type:
+            s += f"{self.type:<5} "
+        if side:
+            if self.side == "sell":
+                s += "\033[31m{}\033[0m".format(f"{self.side:<4} ")
+            else:
+                s += "\033[32m{}\033[0m".format(f"{self.side:<4} ")
+        if average:
+            s += f",average: {self.average} "
+        if amount:
+            s += f",amount: {self.amount:0.3f} "
+        if info:
+            s += f"{self.info} "
+        if fee:
+            s += f",fee: {self.fee:0.2f} "
+        if cost:
+            s += f", cost: {self.amount*self.average:0.2f} "
+        return s
+
 
 class Trades:
     def __init__(self):
@@ -194,7 +220,8 @@ class Torgash:
             price = self._current_price
             fee = self.trading_market_fee_multiplier * amount * price
             order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount, fee=fee)
-            print(f"{side} {amount} {symbol.split('/')[0]} | Price: {price} {symbol.split('/')[1]}")
+            side_f = "\033[31m{:<4}\033[0m".format(side) if side == "sell" else "\033[32m{:<4}\033[0m".format(side)
+            print(f"{side_f} {amount} {symbol.split('/')[0]} | Price: {price} {symbol.split('/')[1]}")
             self.execute_order(order)
         else:
             raise ValueError("Bad type of transaction")
@@ -233,7 +260,7 @@ class Torgash:
         pass
 
     def run_step_strategy(self):
-        # self.balance_hist.append(self.current_base_balance)
+        self.balance_hist.append(self.current_base_balance)
         for datetime, value in self.data.iterrows():
             self._current_datetime = datetime
             self._current_price = self.data[datetime].Open
@@ -251,6 +278,7 @@ class Torgash:
             self.data.head(1).index[0]]
         #####################################################
         self.balance_hist.append(self.start_balance)
+        self.datetime_balance_hist.append(self.data.index.values[0])
         # self.trading_balance_hist.append(self.current_trading_balance)
         for datetime, value in self.data.iterrows():
             self._current_datetime = datetime
@@ -319,7 +347,7 @@ class Torgash:
                                          open=data_interval['Open'], high=data_interval['High'],
                                          low=data_interval['Low'], close=data_interval['Close'],
                                          name=self.symbol,
-                                         increasing_line_color='grey', decreasing_line_color='black', visible=False),
+                                         increasing_line_color='grey', decreasing_line_color="lightblue", visible=False),
                           row=1, col=1)
 
             fig.add_trace(
