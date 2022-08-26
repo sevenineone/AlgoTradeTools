@@ -29,7 +29,7 @@ class Order:
         self.datetime_execute = datetime_execute
 
     def get_order_info(self, datetime=False, datetime_execute=False, type=False,
-                         side=False, average=False, amount=False, info=False, fee=False, cost=False):
+                       side=False, average=False, amount=False, info=False, fee=False, cost=False):
         s = ''
         if datetime:
             s += f"{self.datetime} "
@@ -51,7 +51,7 @@ class Order:
         if fee:
             s += f",fee: {self.fee:0.2f} "
         if cost:
-            s += f", cost: {self.amount*self.average:0.2f} "
+            s += f", cost: {self.amount * self.average:0.2f} "
         return s
 
 
@@ -86,7 +86,8 @@ class Trades:
         return cost_short - cost_long
 
     def get_all_close_order(self):
-        return [[item.datetime, item.average, item.side, item.amount] for i in self.close_trades for item in i]
+        return [[item.datetime_execute, item.average, item.side, item.amount, item.info]
+                for i in self.close_trades for item in i]
 
 
 class Torgash:
@@ -129,11 +130,12 @@ class Torgash:
         if re.fullmatch('''[a-zA-Z]+/[a-zA-Z]''', symbol):
             self.symbol = symbol
 
+        self.data = self.data.drop_duplicates(keep='first')  # clean duplicate line
+
         # calculate indicators to dataframe
-        self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
-        self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=100))
-        self.data.columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume', 'sma_fast',
-                             'sma_slow']  # name the columns the way you want
+        # self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=50))
+        # self.data = self.data.join(ta.trend.sma_indicator(self.data.Close, window=100))
+        self.data.columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']  # name the columns the way you want
         #####################################################
         self.data.set_index('Datetime', inplace=True)
 
@@ -144,38 +146,54 @@ class Torgash:
                       low=low, close=close, volume=volume, symbol=symbol)
 
     def execute_order(self, order: Order):
+        order.info += f"trade №{len(self.trades.close_trades)} "
         if not self.trades.open_trade:  # if there are no open trade
             self.trades.open_trade.append(order)
         elif self.trades.get_open_trade_side() == order.side:  # if the direction is the same
             self.trades.open_trade.append(order)
         else:  # orders are sent in different directions
-            if self.trades.get_open_trade_amount() == order.amount:
+            open_trade_amount = self.trades.get_open_trade_amount()
+            if open_trade_amount - self.min_order_step/2 <= order.amount <= open_trade_amount + self.min_order_step/2:
                 self.trades.open_trade.append(order)
                 self.trades.close_trades.append(self.trades.open_trade)
                 self.trades.open_trade = []
                 self.balance_hist.append(self.balance_hist[-1] + self.trades.calculate_trade_profit(-1))
                 self.datetime_balance_hist.append(self._current_datetime)
-            elif self.trades.get_open_trade_amount() > order.amount:
+            elif open_trade_amount > order.amount:
                 self.trades.open_trade.append(order)
             else:  # open trade amount less than new order amount
-                raise ValueError("Incorrect order amount")
+                open_trade_amount = self.trades.get_open_trade_amount() // self.min_order_step * self.min_order_step
+                raise ValueError(f"Incorrect order amount: {'-' if order.side == 'sell' else '+'}{order.amount}. "
+                                 f"Open trade amount: {'-' if self.trades.get_open_trade_side() == 'sell' else '+'}"
+                                 f"{open_trade_amount}")
+
+        red, green, yellow, blue = "\033[31m", "\033[32m", "\033[33m", "\033[34m"
+        side_c = (red if order.side == "sell" else green) + "{:<4}\033[0m".format(order.side)
+        type_c = (yellow if order.type == "market" else blue) + "{:<6}\033[0m".format(order.type)
+        print(f"{type_c} execute: {side_c} {order.amount} {order.symbol.split('/')[0]} "
+              f"| Price: {order.average} {order.symbol.split('/')[1]}")
 
     def limits_check(self):
-        for i in range(len(self.trades.open_order)):
+        i = 0
+        while i < len(self.trades.open_order):
+            # for i in range(len(self.trades.open_order)):
             if self.trades.open_order[i].side == 'buy':
                 # if buy but limit price > self._current_price (make market order) !!!!!
 
-                if self.data[self._current_datetime].Low < self.trades.open_order[i].average:
+                if self.data.loc[self._current_datetime].Low < self.trades.open_order[i].average:
                     order = self.trades.open_order.pop(i)
                     order.set_datetime_execute(self._current_datetime)
                     self.execute_order(order)
+                    continue
             elif self.trades.open_order[i].side == 'sell':
                 # if sell but limit price < self._current_price (make market order) !!!!!
 
-                if self.data[self._current_datetime].High > self.trades.open_order[i].average:
+                if self.data.loc[self._current_datetime].High > self.trades.open_order[i].average:
                     order = self.trades.open_order.pop(i)
                     order.set_datetime_execute(self._current_datetime)
                     self.execute_order(order)
+                    continue
+            i += 1
 
     def calculate_order_amount(self, percent=100, usdt=100, based_in_percent=True):
         # open_position_cost = self.trades.get_open_trade_amount() * self._current_price  # open position price
@@ -214,14 +232,17 @@ class Torgash:
             fee = self.trading_limit_fee_multiplier * amount * price
             order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount, fee=fee)
             self.trades.open_order.append(order)
+            side_c = "\033[31m{:<4}\033[0m".format(order.side) if order.side == "sell" \
+                else "\033[32m{:<4}\033[0m".format(order.side)
+            print(f"\033[34m + Create limit {order.side} {order.amount} {order.symbol.split('/')[0]} "
+                  f"| Price: {order.average} {order.symbol.split('/')[1]}\033[0m")
         elif type == "market":
             if amount * self._current_price < self.min_order_threshold:
                 raise ValueError(f"Order price less then {self.min_order_threshold}$")
             price = self._current_price
             fee = self.trading_market_fee_multiplier * amount * price
             order = Order(0, self._current_datetime, symbol, type, side, average=price, amount=amount, fee=fee)
-            side_f = "\033[31m{:<4}\033[0m".format(side) if side == "sell" else "\033[32m{:<4}\033[0m".format(side)
-            print(f"{side_f} {amount} {symbol.split('/')[0]} | Price: {price} {symbol.split('/')[1]}")
+
             self.execute_order(order)
         else:
             raise ValueError("Bad type of transaction")
@@ -256,21 +277,30 @@ class Torgash:
         """
         pass
 
+    def closeAllTrades(self):
+        """
+        NOT INCLUDE IN CCXT
+        """
+        order_side = "buy" if self.trades.get_open_trade_side() == "sell" else "sell"
+        self.createMarketOrder(order_side, self.trades.get_open_trade_amount())
+
     def step_strategy(self, datetime):
         pass
 
     def run_step_strategy(self):
-        self.balance_hist.append(self.current_base_balance)
+        self.balance_hist.append(self.start_balance)
         for datetime, value in self.data.iterrows():
             self._current_datetime = datetime
             self._current_price = self.data[datetime].Open
             self.step_strategy(datetime)
             self.limits_check()
 
-            #  self.balance_hist.append(self.current_base_balance)
+            #  self.balance_hist.append(self.start_balance)
             #  self.trading_balance_hist.append(self.current_trading_balance)
 
     def run_strategy(self):
+        pass
+        """
         # We cut the top of the data, because first 100 sma values are not calculated there.
         self.data = self.data.iloc[99:]
         # xtra variables
@@ -289,6 +319,7 @@ class Torgash:
             elif not fast_above_slow and self.data.sma_fast[datetime] > self.data.sma_slow[datetime]:
                 self.createMarketOrder("buy", 0.02)
             fast_above_slow = self.data.sma_fast[datetime] > self.data.sma_slow[datetime]
+        """
 
     def plot_candlestick(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):
         """ displays count_candlestick_per_plot candlestick at one time on one chart """
@@ -327,13 +358,13 @@ class Torgash:
         fig.update_layout(xaxis_rangeslider_visible=False, sliders=sliders)
         fig.show()
 
-    def plot(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):  # Надо подписи на графике поменять
+    def plot(self, count_candlestick_per_plot=10000, from_candle=0, to_candle=0):
         """ displays count_candlestick_per_plot candlestick at one time on one chart """
         if to_candle == 0 or to_candle > len(self.data):
             to_candle = len(self.data)
 
         transaction_df = pd.DataFrame(data=self.trades.get_all_close_order(),
-                                      columns=['datetime', 'average', 'side', 'amount'])
+                                      columns=['datetime', 'average', 'side', 'amount', 'info'])
         balance_df = pd.DataFrame([self.datetime_balance_hist, self.balance_hist]).T
         fig = make_subplots(rows=2, cols=1, row_width=[0.3, 0.7], shared_xaxes=True)
         for i in range(from_candle, to_candle, count_candlestick_per_plot):
@@ -347,29 +378,43 @@ class Torgash:
                                          open=data_interval['Open'], high=data_interval['High'],
                                          low=data_interval['Low'], close=data_interval['Close'],
                                          name=self.symbol,
-                                         increasing_line_color='grey', decreasing_line_color="lightblue", visible=False),
+                                         increasing_line_color='grey', decreasing_line_color="lightblue",
+                                         visible=False),
                           row=1, col=1)
 
+            #transaction_df_interval['text0'] = "Amount: " + transaction_df_interval["amount"].astype(str) + " " + \
+            #                                   transaction_df_interval["info"]
+
             fig.add_trace(
-                go.Scatter(x=balance_df_interval[0], y=balance_df_interval[1], name='balance', mode='lines+markers',
+                go.Scatter(x=balance_df_interval[0],
+                           y=balance_df_interval[1],
+                           name='balance',
+                           mode='lines+markers',
+                           # hovertext=,
                            visible=False),
                 row=2, col=1)
-            fig.add_trace(go.Scatter(mode='markers',
-                                     x=transaction_df_interval[transaction_df_interval['side'] == 'buy']['datetime'],
-                                     y=transaction_df_interval[transaction_df_interval['side'] == 'buy']['average'],
-                                     marker_symbol=45,
-                                     marker_color='green',
-                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell'][
-                                         'amount'],
-                                     marker_size=10, name='buy', visible=False), row=1, col=1)
-            fig.add_trace(go.Scatter(mode='markers',
-                                     x=transaction_df_interval[transaction_df_interval['side'] == 'sell']['datetime'],
-                                     y=transaction_df_interval[transaction_df_interval['side'] == 'sell']['average'],
-                                     marker_symbol=46,
-                                     marker_color='red',
-                                     hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell'][
-                                         'amount'],
-                                     marker_size=10, name='sell', visible=False), row=1, col=1)
+
+            transaction_df_interval['text1'] = "Amount: " + transaction_df_interval["amount"].astype(str) + " " + \
+                                               transaction_df_interval["info"]
+            fig.add_trace(
+                go.Scatter(mode='markers',
+                           x=transaction_df_interval[transaction_df_interval['side'] == 'buy']['datetime'],
+                           y=transaction_df_interval[transaction_df_interval['side'] == 'buy']['average'],
+                           marker_symbol=45,
+                           marker_color='green',
+                           hovertext=transaction_df_interval[transaction_df_interval['side'] == 'buy']["text1"],
+                           marker_size=10, name='buy', visible=False),
+                row=1, col=1)
+
+            fig.add_trace(
+                go.Scatter(mode='markers',
+                           x=transaction_df_interval[transaction_df_interval['side'] == 'sell']['datetime'],
+                           y=transaction_df_interval[transaction_df_interval['side'] == 'sell']['average'],
+                           marker_symbol=46,
+                           marker_color='red',
+                           hovertext=transaction_df_interval[transaction_df_interval['side'] == 'sell']['text1'],
+                           marker_size=10, name='sell', visible=False),
+                row=1, col=1)
 
             #################################
         fig.data[0].visible = True
